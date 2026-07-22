@@ -24,6 +24,7 @@ import {
   valenceFromBand,
 } from './outcomes';
 import { Rng, clamp } from './rng';
+import { buildTurnPlan } from './turnPlan';
 import {
   CIVIL_STARTS,
   GRAPH,
@@ -38,6 +39,18 @@ function transitionsFor(office: OfficeId): Transition[] {
   return GRAPH[office] ?? [{ to: 'militante', weight: 100 }];
 }
 
+/**
+ * Ritmo esperado de carrera: subes, pero el techo se encarece.
+ * turn 0 → ~tier 1.2; turn 11 → ~tier 6 (ministro/Moncloa = sobresaliente).
+ */
+function expectedTier(turn: number): number {
+  return 1.2 + turn * 0.45;
+}
+
+/**
+ * Gravedad por altura: cuanto más alto (y más por encima del ritmo),
+ * más improbable el siguiente peldaño. Carreras brillantes = cola rara.
+ */
 export function pickNextOffice(
   rng: Rng,
   player: Player,
@@ -48,6 +61,8 @@ export function pickNextOffice(
   const quality = qualityFromBand(band);
   const qScore = { excelente: 4, bien: 3, tirando: 2, mal: 1, escandalo: 0 }[quality];
   const fromTier = getOffice(player.office).tier;
+  const pace = expectedTier(player.turn);
+  const overshoot = fromTier - pace;
 
   const edges = transitionsFor(player.office).map((e) => {
     let w = e.weight;
@@ -55,43 +70,71 @@ export function pickNextOffice(
     const delta = toTier - fromTier;
     const branch = getOffice(e.to).branch;
 
-    if (e.minQ != null && qScore < e.minQ) w *= 0.12;
+    if (e.minQ != null && qScore < e.minQ) w *= 0.1;
+
+    // Rare (Moncloa / VP): boom abre puerta; win casi no; resto casi imposible
     if (e.rare) {
-      w *= band === 'boom' ? 2.2 : band === 'win' ? 0.7 : 0.25;
-      if (player.flags.includes('destino_moncloa')) w *= 3;
+      w *= band === 'boom' ? 2.2 : band === 'win' ? 0.45 : 0.08;
+      if (player.flags.includes('destino_moncloa')) w *= 3.5;
+      else w *= 0.75;
+      // Último tercio + ya en la cima: la puerta existe, pero sigue siendo cola
+      if (toTier >= 9 && fromTier >= 8 && player.turn >= 8 && band === 'boom') w *= 1.35;
+      else if (toTier >= 9 && player.turn < 7) w *= 0.4;
+      if (fromTier >= 8 && toTier < 9) w *= band === 'boom' ? 0.9 : 0.4;
     }
 
     w *= personalityOfficeBias(player, e.to);
 
+    // Gravedad suave→fuerte: subir desde mid cuesta; saltar tiers raro
+    if (delta > 0) {
+      w *= Math.pow(0.88, Math.max(0, fromTier - 3));
+      if (overshoot > 0.5) w *= Math.pow(0.72, overshoot);
+      if (delta >= 2) {
+        // Saltos de 2: casi solo risk+boom, o rare (Moncloa) con boom
+        if (e.rare && band === 'boom') w *= 0.85;
+        else w *= choice.kind === 'risk' && band === 'boom' ? 0.7 : 0.28;
+      }
+      if (toTier >= 7) w *= band === 'boom' ? 0.95 : band === 'win' ? 0.7 : 0.38;
+      if (toTier >= 8) w *= band === 'boom' ? 0.85 : 0.55;
+      if (toTier >= 9) w *= band === 'boom' ? (e.rare ? 1.0 : 0.55) : 0.3;
+    }
+
     switch (intent) {
       case 'up':
-        if (delta >= 2) w *= choice.kind === 'risk' ? 2.2 : 0.35;
-        else if (delta === 1) w *= choice.kind === 'risk' ? 1.8 : 1.15;
-        else if (delta === 0) w *= 0.55;
-        else w *= 0.2;
+        if (delta >= 2) w *= e.rare && band === 'boom' ? 1.4 : choice.kind === 'risk' ? 1.9 : 0.32;
+        else if (delta === 1) w *= choice.kind === 'risk' ? 1.65 : 1.2;
+        else if (delta === 0) w *= 0.6;
+        else w *= 0.18;
         break;
       case 'side':
-        if (delta === 0) w *= 1.6;
-        else if (delta === 1) w *= choice.kind === 'safe' ? 0.85 : 1.1;
-        else if (delta >= 2) w *= 0.25;
-        else w *= 0.45;
+        if (delta === 0) w *= 1.65;
+        else if (delta === 1) w *= choice.kind === 'safe' ? 0.85 : 1.05;
+        else if (delta >= 2) w *= 0.22;
+        else w *= 0.5;
         break;
       case 'down':
-        if (delta < 0) w *= 2.0;
-        else if (delta === 0) w *= 1.1;
-        else w *= 0.35;
+        if (delta < 0) w *= 2.0 + Math.max(0, fromTier - 4) * 0.1;
+        else if (delta === 0) w *= 1.05;
+        else w *= 0.3;
         break;
       case 'scandalExit':
-        if (SCANDAL_EXITS.includes(e.to) || branch === 'media' || branch === 'retiro') w *= 3.2;
-        if (delta < 0) w *= 1.8;
-        if (delta > 0) w *= 0.15;
+        if (SCANDAL_EXITS.includes(e.to) || branch === 'media' || branch === 'retiro') w *= 3.4;
+        if (delta < 0) w *= 2.0;
+        if (delta > 0) w *= 0.1;
         break;
     }
 
-    if (choice.kind === 'safe' && delta >= 2) w *= 0.4;
-    if (choice.kind === 'risk' && delta > 0 && (band === 'boom' || band === 'win')) w *= 1.35;
-    if (player.turn >= 9 && branch === 'retiro') w *= 1.55;
-    if (player.turn < 5 && delta < 0) w *= 0.35;
+    if (choice.kind === 'safe' && delta >= 2) w *= 0.32;
+    if (choice.kind === 'risk' && delta === 1 && (band === 'boom' || band === 'win')) w *= 1.3;
+    // Caídas: suaves al inicio, reales a mitad/final (castigo)
+    if (delta < 0) {
+      if (player.turn < 3) w *= 0.4;
+      else if (player.turn < 6) w *= 0.8;
+      else w *= 1.2;
+    }
+    if (player.turn >= 9 && branch === 'retiro') w *= 1.6;
+    if (delta > 0 && player.forma >= 72) w *= 1.12;
+    if (delta < 0 && player.forma < 38) w *= 1.25;
 
     return { ...e, weight: Math.max(0.01, w) };
   });
@@ -101,7 +144,13 @@ export function pickNextOffice(
     const alts = edges.filter((e) => e.to !== player.office);
     if (alts.length) pick = rng.weighted(alts).to;
   }
-  if (player.turn < 5 && getOffice(pick).tier < fromTier && intent !== 'scandalExit' && intent !== 'down') {
+  // Soft floor muy temprano: no castigar el tutorial salvo escándalo/down
+  if (
+    player.turn < 3 &&
+    getOffice(pick).tier < fromTier &&
+    intent !== 'scandalExit' &&
+    intent !== 'down'
+  ) {
     const ups = edges.filter((e) => getOffice(e.to).tier >= fromTier);
     if (ups.length) pick = rng.weighted(ups).to;
   }
@@ -161,7 +210,7 @@ export function createPlayer(name: string, party: PartyId, personality: Personal
   const rng = new Rng(seed);
   const start = rng.pick(CIVIL_STARTS);
   const flags: string[] = [];
-  if (rng.chance(0.012)) flags.push('destino_moncloa');
+  if (rng.chance(0.015)) flags.push('destino_moncloa');
   if (rng.chance(0.02)) flags.push('destino_suarez');
   if (party === 'upyd') flags.push('destino_naranja_light');
 
@@ -187,10 +236,14 @@ export function createPlayer(name: string, party: PartyId, personality: Personal
     officesHeld: [{ year: 2008, office: start, quality: 'tirando' }],
     flags,
     seenEventIds: [],
+    seenQuizIds: [],
     seenShadowIds: [],
+    seenSalaIds: [],
+    seenSalaRules: [],
     seenReactions: [],
     shadowCount: 0,
     shadowCooldown: false,
+    turnPlan: buildTurnPlan(seed),
     turn: 0,
     totalTurns: TOTAL_TURNS,
     retired: false,

@@ -4,16 +4,20 @@ import { Rng } from '../engine/rng';
 
 export type Valence = 'up' | 'flat' | 'down';
 
-/** Puntuación de carrera: 50 base → 99 techo según techo alcanzado. */
+/** Puntuación de carrera: 48 base → 99 techo. Pico alto + vibe − escándalos. */
 export function computeRating(player: Player): number {
   const peak = Math.max(
     getOffice(player.office).tier,
     ...player.officesHeld.map((h) => getOffice(h.office).tier),
   );
-  const tierPart = Math.round((peak / 9) * 42);
-  const vibePart = Math.round((player.forma + player.fama) / 40);
-  const penalty = Math.min(6, player.escandalos * 2);
-  return Math.max(50, Math.min(99, 50 + tierPart + vibePart - penalty));
+  // Curva concava: tiers altos aportan menos por peldaño (brillante = raro en índice)
+  const tierPart = Math.round(Math.pow(peak / 9, 1.35) * 40);
+  const vibePart = Math.round((player.forma * 0.55 + player.fama * 0.45) / 38);
+  const penalty = Math.min(10, player.escandalos * 2 + Math.max(0, player.derrotas - player.victorias));
+  const skillBonus =
+    (player.flags.includes('sala_fria') ? 1 : 0) +
+    Math.min(2, player.seenQuizIds.length > 0 ? Math.floor(player.victorias / 4) : 0);
+  return Math.max(48, Math.min(99, 48 + tierPart + vibePart - penalty + skillBonus));
 }
 
 function era(year: number): 'zap' | 'rajoy' | 'bloqueo' | 'sanchez' | 'tarde' {

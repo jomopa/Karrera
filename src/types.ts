@@ -1,4 +1,14 @@
-export type Screen = 'home' | 'create' | 'event' | 'result' | 'legacy' | 'shadow' | 'shadowResult';
+export type Screen =
+  | 'home'
+  | 'create'
+  | 'event'
+  | 'quiz'
+  | 'result'
+  | 'legacy'
+  | 'shadow'
+  | 'shadowResult'
+  | 'sala'
+  | 'salaResult';
 
 /** Partidos jugables a lo largo de la década */
 export type PartyId = 'psoe' | 'pp' | 'iu' | 'upyd' | 'podemos' | 'ciudadanos' | 'vox' | 'sumar';
@@ -22,6 +32,9 @@ export type OfficeBand = 'civil' | 'low' | 'mid' | 'high' | 'top';
 export type Quality = 'excelente' | 'bien' | 'tirando' | 'mal' | 'escandalo';
 
 export type ChoiceKind = 'safe' | 'risk';
+
+/** Tipo de ronda en el calendario de carrera (12 turnos) */
+export type TurnKind = 'decision' | 'quiz' | 'sala';
 
 /** Banda de outcome causal (antes de mapear a calidad/cargo) */
 export type OutcomeBand = 'boom' | 'win' | 'hold' | 'hurt' | 'crash';
@@ -105,12 +118,17 @@ export interface Player {
   officesHeld: { year: number; office: OfficeId; quality: Quality }[];
   flags: string[];
   seenEventIds: string[];
+  seenQuizIds: string[];
   seenShadowIds: string[];
+  seenSalaIds: string[];
+  seenSalaRules: string[];
   seenReactions: string[];
   /** Ofertas de sombra presentadas (aceptadas o saltadas) */
   shadowCount: number;
   /** Si true, la próxima oportunidad de oferta se salta (anti-rachas) */
   shadowCooldown: boolean;
+  /** Calendario fijo de la partida: 6 decision + 3 quiz + 3 sala, barajado */
+  turnPlan: TurnKind[];
   turn: number;
   totalTurns: number;
   retired: boolean;
@@ -157,6 +175,8 @@ export interface Legacy {
   };
 }
 
+export type ShadowEra = 'zap' | 'rajoy' | 'bloqueo' | 'sanchez' | 'tarde';
+
 export interface PendingEvent {
   event: YearEvent;
   variant: EventVariant;
@@ -165,9 +185,24 @@ export interface PendingEvent {
   yearTo: number;
 }
 
-export type ShadowTheme = 'corrupcion' | 'traicion' | 'chantaje' | 'caja_b' | 'filtracion' | 'enchufe';
+export interface QuizQuestion {
+  id: string;
+  eras: ShadowEra[];
+  prompt: string;
+  correct: string;
+  wrong: string;
+}
 
-export type ShadowEra = 'zap' | 'rajoy' | 'bloqueo' | 'sanchez' | 'tarde';
+export interface PendingQuiz {
+  question: QuizQuestion;
+  options: [string, string];
+  correctIndex: 0 | 1;
+  polls: PollRow[];
+  yearFrom: number;
+  yearTo: number;
+}
+
+export type ShadowTheme = 'corrupcion' | 'traicion' | 'chantaje' | 'caja_b' | 'filtracion' | 'enchufe';
 
 export interface ShadowOutcomeCopy {
   punch: string;
@@ -213,4 +248,79 @@ export interface ShadowBeat {
   ratingBefore: number;
   ratingAfter: number;
   partyAfter: PartyId;
+}
+
+/** Lecturas posibles en Lectura de sala (léxico fijo) */
+export type SalaReading =
+  | 'ascienden'
+  | 'aparcan'
+  | 'usan'
+  | 'queman'
+  | 'mensajero'
+  | 'rumor_trampa'
+  | 'callar'
+  | 'hablar';
+
+export type SalaRuleId =
+  | 'sonrisa_cero'
+  | 'bronca_llamada'
+  | 'eufemismo_no'
+  | 'micro_fusible'
+  | 'silencio_barones'
+  | 'encuesta_foto'
+  | 'titular_lista'
+  | 'cafe_sin_prisa'
+  | 'favor_visible'
+  | 'ausencia_whatsapp';
+
+export type SalaRoom = 'aparato' | 'media' | 'calle' | 'institucional' | 'intimidad' | 'faccion';
+
+export type SalaSignalRole = 'dominant' | 'support' | 'noise';
+
+export interface SalaSignal {
+  text: string;
+  role: SalaSignalRole;
+  /** Ruido escrito para tentar este sesgo de personalidad */
+  tempt?: PersonalityId;
+}
+
+export interface SalaCard {
+  id: string;
+  ruleId: SalaRuleId;
+  eras: ShadowEra[];
+  room: SalaRoom;
+  frame: string;
+  signals: [SalaSignal, SalaSignal, SalaSignal];
+  options: [SalaReading, SalaReading, SalaReading];
+  correct: SalaReading;
+  parties?: PartyId[];
+  bands?: OfficeBand[];
+  requireFlags?: string[];
+  forbidFlags?: string[];
+  weight?: number;
+}
+
+export interface PendingSala {
+  card: SalaCard;
+  /** Señales en orden de presentación (barajado) */
+  signals: [SalaSignal, SalaSignal, SalaSignal];
+  yearFrom: number;
+}
+
+export interface SalaBeat {
+  cardId: string;
+  ruleId: SalaRuleId;
+  correct: boolean;
+  resistedTempt: boolean;
+  punch: string;
+  lesson: string;
+  reading: SalaReading;
+  valence: 'up' | 'flat' | 'down';
+  yearFrom: number;
+  yearTo: number;
+  fromOffice: OfficeId;
+  toOffice: OfficeId;
+  quality: Quality;
+  ratingBefore: number;
+  ratingAfter: number;
 }

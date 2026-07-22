@@ -587,6 +587,21 @@ button:disabled {
   color: var(--accent);
 }
 
+.choice-quiz {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+
+.choice-quiz .choice-tag {
+  color: var(--muted);
+}
+
+.quiz-card {
+  background:
+    linear-gradient(165deg, rgba(90, 140, 200, 0.12), transparent 48%),
+    var(--bg-elev);
+}
+
 .delta-good {
   color: var(--good);
 }
@@ -1049,6 +1064,32 @@ button:disabled {
 
 .shadow-roulette.reduced.land-lose {
   background: rgba(255, 107, 107, 0.12);
+}
+
+.sala-signals {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sala-signals li {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.sala-signals li::before {
+  content: '·';
+  color: var(--accent);
+  font-weight: 800;
+  margin-right: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {

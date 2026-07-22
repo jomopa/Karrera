@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "sim": "npx --yes tsx src/engine/sim.ts"
+    "sim": "npx --yes tsx src/engine/sim.ts",
+    "sim:sala": "npx --yes tsx src/engine/simSala.ts"
   },
   "dependencies": {
     "framer-motion": "^12.42.2",
